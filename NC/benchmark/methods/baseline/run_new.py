@@ -38,7 +38,7 @@ def mat2tensor(mat):
 
 def run_model_DBLP(args):
     feats_type = args.feats_type
-    features_list, adjM, labels, train_val_test_idx, dl = load_data(args.dataset)
+    features_list, adjM, labels, train_val_test_idx, dl = load_data(args)
     device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
     features_list = [mat2tensor(features).to(device) for features in features_list]
 
@@ -85,13 +85,8 @@ def run_model_DBLP(args):
     total_auc_list = []
     total_micro_list = []
     total_macro_list = []
+    ratio_embs = []
     for ratio in train_val_test_idx.keys():
-        train_idx = train_val_test_idx[ratio]["train_idx"]
-        train_idx = np.sort(train_idx)
-        val_idx = train_val_test_idx[ratio]["val_idx"]
-        val_idx = np.sort(val_idx)
-        test_idx = train_val_test_idx[ratio]["test_idx"]
-        test_idx = np.sort(test_idx)
 
         edge2type = {}
         for k in dl.links["data"]:
@@ -121,7 +116,13 @@ def run_model_DBLP(args):
         macro_list = []
         nmi_list = []
         ari_list = []
-        for _ in range(args.repeat):
+        for i in range(args.repeat):
+            train_idx = train_val_test_idx[ratio][i]["train_idx"]
+            train_idx = np.sort(train_idx)
+            val_idx = train_val_test_idx[ratio][i]["val_idx"]
+            val_idx = np.sort(val_idx)
+            test_idx = train_val_test_idx[ratio][i]["test_idx"]
+            test_idx = np.sort(test_idx)
             # num_classes = dl.labels_train['num_classes']
             num_classes = dl.num_classes
 
@@ -183,7 +184,7 @@ def run_model_DBLP(args):
                 if early_stopping.early_stop:
                     print("Early stopping!")
                     break
-
+                # break
             # testing with evaluate_results_nc
             net.load_state_dict(torch.load("checkpoint/checkpoint_{}_{}.pt".format(args.dataset, args.num_layers)))
             net.eval()
@@ -206,11 +207,7 @@ def run_model_DBLP(args):
                 auc_list.append(auc)
                 micro_list.append(micro)
                 macro_list.append(macro)
-
-        if args.visual:
-            with torch.no_grad():
-                logits = net(features_list, e_feat)
-                emb_2d = dl.visualization(logits[:target_node_size], labels, f"log/{args.dataset}/{formatted_now}_{ratio}.png", args.visual)
+        ratio_embs.append(logits[:target_node_size])
         auc_list = np.array(auc_list)
         micro_list = np.array(micro_list)
         macro_list = np.array(macro_list)
@@ -232,11 +229,15 @@ def run_model_DBLP(args):
                 )
                 log_file.close()
                 # print(dl.evaluate(pred))
+    if args.visual:
+        with torch.no_grad():
+            logits = net(features_list, e_feat)
+            emb_2d = dl.visualization(ratio_embs, labels, f"log/{args.dataset}/{formatted_now}.png", args.visual)
     if args.dataset == "PubMed" or args.dataset == "Freebase":
         with open(f"log/{args.dataset}/{formatted_now}", "a") as log_file:
-            print(total_auc_list)
-            print(total_micro_list)
-            print(total_macro_list)
+            # print(total_auc_list)
+            # print(total_micro_list)
+            # print(total_macro_list)
             total_auc_list = np.array(total_auc_list)
             total_micro_list = np.array(total_micro_list)
             total_macro_list = np.array(total_macro_list)

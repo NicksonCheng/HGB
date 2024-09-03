@@ -16,6 +16,11 @@ Ntypes = {
     "PubMed": {"G": "Geng", "D": "Disease", "C": "Chemical", "S": "Species"},
     "Freebase": {"B": "Book", "F": "Film", "M": "Music", "S": "Sports", "P": "People", "L": "Location", "O": "Organization", "U": "Business"},
 }
+num_node = {
+    "acm": {"p": 4019, "a": 7167, "s": 60},
+    "aminer": {"p": 6564, "a": 13329, "r": 35890},
+    "freebase": {"m": 3492, "a": 33401, "w": 4459, "d": 2502},
+}
 Relations = {
     "acm": ["pa", "ps", "ap", "sp"],
     "aminer": ["pa", "pr", "ap", "rp"],
@@ -71,12 +76,13 @@ def load_dataset(prefix="DBLP"):
 
 class hg_data_loader:
     def __init__(self, dataset):
+        prefix = "../../../../../"
         if dataset == "PubMed":
-            self.path = "../../../../../data/PubMed"
+            self.path = os.path.join(prefix, "data/PubMed")
         elif dataset == "Freebase":
-            self.path = "../../../../../data/HGB_Freebase_random_subg"
+            self.path = os.path.join(prefix, "data/HGB_Freebase_random_subg")
         else:
-            self.path = f"../../../../../data/HeCo/{dataset}"
+            self.path = os.path.join(prefix, f"data/HeCo/{dataset}")
         self.dataset = dataset
         self.ntypes = Ntypes[dataset]
         self.predict_ntype = P_ntype[dataset]
@@ -91,12 +97,17 @@ class hg_data_loader:
         return sp.coo_matrix((data, (i, j)), shape=(self.nodes["total"], self.nodes["total"])).tocsr()
 
     def load_nodes(self):
+        larget_data = ["PubMed", "Freebase"]
         nodes = {"total": 0, "count": Counter(), "attr": {}, "shift": {}}
         node_type_name = list(self.ntypes.keys())
         for ntype_id in range(len(node_type_name)):
             nodes["attr"][ntype_id] = None
         for file in os.listdir(self.path):
             name, ext = os.path.splitext(file)
+            if "_feat" in name:
+                n_type_id = node_type_name.index(name.split("_")[0])
+                nodes["attr"][n_type_id] = sp.load_npz(os.path.join(self.path, f"{name}.npz")).toarray()
+        if self.dataset in larget_data:
             if self.dataset == "PubMed":
                 read_names = ["node_id", "node_name", "node_type", "node_attr"]
             else:
@@ -105,9 +116,10 @@ class hg_data_loader:
             nodes["total"] = len(node_file)
             for idx, ntype in enumerate(node_type_name):
                 nodes["count"][idx] = len(node_file[node_file["node_type"] == idx])
-            if "_feat" in name:
-                n_type_id = node_type_name.index(name.split("_")[0])
-                nodes["attr"][n_type_id] = sp.load_npz(os.path.join(self.path, f"{name}.npz")).toarray()
+        else:
+            for idx, ntype in enumerate(node_type_name):
+                nodes["count"][idx] = num_node[self.dataset][ntype]
+                nodes["total"] += num_node[self.dataset][ntype]
         return nodes
 
     def load_links(self):
@@ -140,7 +152,10 @@ class hg_data_loader:
         links["data"] = new_data
         return links
 
-    def load_labels_with_ratio(self):
+    def load_labels_with_ratio(self, num_rand):
+        from sklearn.model_selection import train_test_split
+
+        label_define = "random"
         label_ratio = ["20", "40", "60"]
         labels = torch.from_numpy(np.load(os.path.join(self.path, "labels.npy"))).long()
         self.num_classes = labels.max().item() + 1
@@ -148,19 +163,44 @@ class hg_data_loader:
         p_ntype_id = list(self.ntypes.keys()).index(self.predict_ntype)
         n = self.nodes["count"][p_ntype_id]
         ratio_init_labels = {ratio: np.zeros(n, dtype=int) for ratio in label_ratio}
-        ratio_nid = {ratio: {} for ratio in label_ratio}
-        for ratio in label_ratio:
-            idx_train = np.load(os.path.join(self.path, f"train_{ratio}.npy"))
-            idx_val = np.load(os.path.join(self.path, f"val_{ratio}.npy"))
-            idx_test = np.load(os.path.join(self.path, f"test_{ratio}.npy"))
-            ratio_init_labels[ratio][idx_train] = labels[idx_train]
-            ratio_init_labels[ratio][idx_val] = labels[idx_val]
-            ratio_init_labels[ratio][idx_test] = labels[idx_test]
+        ratio_nid = {ratio: {seed: {} for seed in range(num_rand)} for ratio in label_ratio}
 
-            ratio_init_labels[ratio] = torch.LongTensor(ratio_init_labels[ratio])
-            ratio_nid[ratio]["train_idx"] = idx_train
-            ratio_nid[ratio]["val_idx"] = idx_val
-            ratio_nid[ratio]["test_idx"] = idx_test
+        for ratio in label_ratio:
+            for i in range(num_rand):
+                num_train_val = int(ratio)
+                num_test = 1000 // self.num_classes
+                idx_train, idx_val, idx_test = [], [], []
+                for class_label in range(self.num_classes):
+                    class_indices = torch.where(labels == class_label)[0]
+
+                    # shuffle the indices
+                    class_indices = class_indices[torch.randperm(len(class_indices))]
+                    # Select 20 for train/val and 333 for test per class
+                    train_val_indices = class_indices[:num_train_val]
+                    test_indices = class_indices[num_train_val : num_train_val + num_test]
+
+                    # Further split the 20 samples into train and val (10 each)
+                    train_indices, val_indices = train_test_split(train_val_indices.numpy(), test_size=0.5, random_state=42)
+                    idx_train.extend(train_indices)
+                    idx_val.extend(val_indices)
+                    idx_test.extend(test_indices)
+                idx_train = np.array(idx_train)
+                idx_val = np.array(idx_val)
+                idx_test = np.array(idx_test)
+
+                # idx_train = np.load(os.path.join(self.path, f"train_{ratio}.npy"))
+                # idx_val = np.load(os.path.join(self.path, f"val_{ratio}.npy"))
+                # idx_test = np.load(os.path.join(self.path, f"test_{ratio}.npy"))
+
+                ratio_init_labels[ratio][idx_train] = labels[idx_train]
+                ratio_init_labels[ratio][idx_val] = labels[idx_val]
+                ratio_init_labels[ratio][idx_test] = labels[idx_test]
+
+                ratio_init_labels[ratio] = torch.LongTensor(ratio_init_labels[ratio])
+                ratio_nid[ratio][i]["train_idx"] = idx_train
+                ratio_nid[ratio][i]["val_idx"] = idx_val
+                ratio_nid[ratio][i]["test_idx"] = idx_test
+
         return labels, ratio_nid
 
     def load_labels(self):
@@ -219,29 +259,34 @@ class hg_data_loader:
             for nid, l in zip(test_idx, label):
                 f.write(f"{nid}\t\t{self.get_node_type(nid)}\t{l}\n")
 
-    def visualization(self, embs, labels, save_file, display=False):
+    def visualization(self, ratio_embs, labels, save_file, display=False):
         import matplotlib.pyplot as plt
         from sklearn.manifold import TSNE
 
-        embs = embs.cpu().detach().numpy()
+        label_rate = ["20", "40", "60"]
+        ratio_embs = [embs.cpu().detach().numpy() for embs in ratio_embs]
         labels = labels.cpu().detach().numpy()
-        perplexity = min(30, embs.shape[0] - 1)
+        perplexity = min(30, ratio_embs[0].shape[0] - 1)
         tsne = TSNE(n_components=2, perplexity=perplexity, random_state=42)
-        embs_2d = tsne.fit_transform(embs)
+        ratio_embs_2d = [tsne.fit_transform(embs) for embs in ratio_embs]
+        colors = ["red", "blue", "green", "yellow", "purple", "orange", "black", "pink", "brown", "gray"]
         if display:
-            plt.figure(figsize=(12, 8))
-            colors = ["red", "blue", "green", "yellow", "purple", "orange", "black", "pink", "brown", "gray"]
-            for label in np.unique(labels):
-                indices = [i for i, lbl in enumerate(labels) if lbl == label]
-                plt.scatter(embs_2d[indices, 0], embs_2d[indices, 1], color=colors[label], label=f"Class {label}", alpha=0.6)
+            fig, axs = plt.subplots(1, len(ratio_embs), figsize=(36, 8))
+            fig.suptitle("t-SNE visualization of node embeddings with class labels")
+            for i, embs_2d in enumerate(ratio_embs_2d):
 
-            plt.title("t-SNE visualization of node embeddings with class labels")
-            plt.xlabel("x t-SNE vector")
-            plt.ylabel("y t-SNE vector")
-            plt.legend()
-            plt.savefig(save_file)
-        embs_2d = torch.tensor(embs_2d)
-        return embs_2d
+                for label in np.unique(labels):
+                    indices = [i for i, lbl in enumerate(labels) if lbl == label]
+                    axs[i].scatter(embs_2d[indices, 0], embs_2d[indices, 1], color=colors[label], label=f"Class {label}", alpha=0.6)
+
+                axs[i].set_title(f"{label_rate[i]}Train label node per class")
+                axs[i].set_xlabel("x t-SNE vector")
+                axs[i].set_ylabel("y t-SNE vector")
+                axs[i].legend()
+
+            fig.savefig(save_file)
+        ratio_embs_2d = [torch.tensor(embs_2d) for embs_2d in ratio_embs_2d]
+        return ratio_embs_2d
 
     def node_clustering_evaluate(self, embeds, y, n_labels, iter=10):
         from sklearn.cluster import KMeans
@@ -279,16 +324,16 @@ class hg_data_loader:
             multi_class="ovr",
             average=None if multilabel else "macro",
         )
-        print(gt)
-        print(pred)
+        # print(gt)
+        # print(pred)
 
         return f1_score(gt, pred, average="micro"), f1_score(gt, pred, average="macro"), auc_score
 
 
-def load_data(prefix="DBLP"):
+def load_data(args):
     from scripts.data_loader import data_loader
 
-    dl = hg_data_loader(prefix)
+    dl = hg_data_loader(args.dataset)
     # dl = data_loader('../../data/'+prefix)
     features = []
     for i in range(len(dl.nodes["count"])):
@@ -318,8 +363,8 @@ def load_data(prefix="DBLP"):
     # train_val_test_idx['train_idx'] = train_idx
     # train_val_test_idx['val_idx'] = val_idx
     # train_val_test_idx['test_idx'] = test_idx
-    if prefix == "PubMed" or prefix == "Freebase":
+    if args.dataset == "PubMed" or args.dataset == "Freebase":
         labels, train_val_test_idx = dl.load_labels()
     else:
-        labels, train_val_test_idx = dl.load_labels_with_ratio()
+        labels, train_val_test_idx = dl.load_labels_with_ratio(args.repeat)
     return features, adjM, labels, train_val_test_idx, dl

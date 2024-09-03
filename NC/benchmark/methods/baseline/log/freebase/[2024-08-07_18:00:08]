@@ -1,0 +1,3 @@
+	 Label Rate:20% Accuracy:[0.6519,0.0219] Micro-F1:[0.5199,0.0224] Macro-F1:[0.4700,0.0356] 
+	 Label Rate:40% Accuracy:[0.6499,0.0198] Micro-F1:[0.5210,0.0247] Macro-F1:[0.4751,0.0214] 
+	 Label Rate:60% Accuracy:[0.6681,0.0119] Micro-F1:[0.5420,0.0142] Macro-F1:[0.5007,0.0172] 
