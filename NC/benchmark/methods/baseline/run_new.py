@@ -87,7 +87,13 @@ def run_model_DBLP(args):
     total_macro_list = []
     ratio_embs = []
     for ratio in train_val_test_idx.keys():
-
+        if(args.dataset == "PubMed"):
+            train_idx = train_val_test_idx[ratio]["train_idx"]
+            train_idx = np.sort(train_idx)
+            val_idx = train_val_test_idx[ratio]["val_idx"]
+            val_idx = np.sort(val_idx)
+            test_idx = train_val_test_idx[ratio]["test_idx"]
+            test_idx = np.sort(test_idx)
         edge2type = {}
         for k in dl.links["data"]:
             for u, v in zip(*dl.links["data"][k].nonzero()):
@@ -117,12 +123,13 @@ def run_model_DBLP(args):
         nmi_list = []
         ari_list = []
         for i in range(args.repeat):
-            train_idx = train_val_test_idx[ratio][i]["train_idx"]
-            train_idx = np.sort(train_idx)
-            val_idx = train_val_test_idx[ratio][i]["val_idx"]
-            val_idx = np.sort(val_idx)
-            test_idx = train_val_test_idx[ratio][i]["test_idx"]
-            test_idx = np.sort(test_idx)
+            if(args.dataset != "PubMed"):
+                train_idx = train_val_test_idx[ratio][i]["train_idx"]
+                train_idx = np.sort(train_idx)
+                val_idx = train_val_test_idx[ratio][i]["val_idx"]
+                val_idx = np.sort(val_idx)
+                test_idx = train_val_test_idx[ratio][i]["test_idx"]
+                test_idx = np.sort(test_idx)
             # num_classes = dl.labels_train['num_classes']
             num_classes = dl.num_classes
 
