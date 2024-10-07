@@ -28,6 +28,7 @@ Relations = {
     "PubMed": ["GG", "GD", "DD", "CG", "CD", "CC", "CS", "SG", "SD", "SS", "DG", "GC", "DC", "SC", "GS", "DS"],
     "Freebase": [],
 }
+lable_ratio=["3","4","60"]
 for n1 in Ntypes["Freebase"].keys():
     for n2 in Ntypes["Freebase"].keys():
         if f"{n1}{n2}" not in Relations["Freebase"]:
@@ -162,10 +163,10 @@ class hg_data_loader:
 
         p_ntype_id = list(self.ntypes.keys()).index(self.predict_ntype)
         n = self.nodes["count"][p_ntype_id]
-        ratio_init_labels = {ratio: np.zeros(n, dtype=int) for ratio in label_ratio}
-        ratio_nid = {ratio: {seed: {} for seed in range(num_rand)} for ratio in label_ratio}
+        ratio_init_labels = {ratio: np.zeros(n, dtype=int) for ratio in lable_ratio}
+        ratio_nid = {ratio: {seed: {} for seed in range(num_rand)} for ratio in lable_ratio}
 
-        for ratio in label_ratio:
+        for ratio in lable_ratio:
             for i in range(num_rand):
                 num_train_val = int(ratio)
                 num_test = 1000 // self.num_classes
@@ -188,10 +189,12 @@ class hg_data_loader:
                 idx_val = np.array(idx_val)
                 idx_test = np.array(idx_test)
 
+                ## used fixed train/val/test 
                 # idx_train = np.load(os.path.join(self.path, f"train_{ratio}.npy"))
                 # idx_val = np.load(os.path.join(self.path, f"val_{ratio}.npy"))
                 # idx_test = np.load(os.path.join(self.path, f"test_{ratio}.npy"))
-
+                ##
+                
                 ratio_init_labels[ratio][idx_train] = labels[idx_train]
                 ratio_init_labels[ratio][idx_val] = labels[idx_val]
                 ratio_init_labels[ratio][idx_test] = labels[idx_test]

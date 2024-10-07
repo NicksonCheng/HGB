@@ -61,7 +61,7 @@ class myGAT(nn.Module):
         logits = logits.mean(1)
         # This is an equivalent replacement for tf.l2_normalize, see https://www.tensorflow.org/versions/r1.15/api_docs/python/tf/math/l2_normalize for more information.
         logits = logits / (torch.max(torch.norm(logits, dim=1, keepdim=True), self.epsilon))
-        return logits
+        return logits,h
 
 class RGAT(nn.Module):
     def __init__(self,
