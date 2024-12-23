@@ -1,0 +1,4 @@
+	 Label Rate:3% Accuracy:[0.5426,0.0381] Micro-F1:[0.3762,0.0376] Macro-F1:[0.3059,0.0753] 
+	[clustering] nmi: [0.0591, 0.0046] ari: [0.0641, 0.0059]
+	 Label Rate:4% Accuracy:[0.5294,0.0480] Micro-F1:[0.3631,0.0354] Macro-F1:[0.3160,0.0673] 
+	[clustering] nmi: [0.0534, 0.0045] ari: [0.0592, 0.0090]

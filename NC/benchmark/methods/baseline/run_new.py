@@ -38,7 +38,10 @@ def mat2tensor(mat):
 
 def run_model_DBLP(args):
     feats_type = args.feats_type
-    features_list, adjM, labels, train_val_test_idx, dl = load_data(args)
+    if args.dataset == "PubMed":
+        features_list, adjM, labels, labels_indices, train_val_test_idx, dl = load_data(args)
+    else:
+        features_list, adjM, labels, train_val_test_idx, dl = load_data(args)
     device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
     features_list = [mat2tensor(features).to(device) for features in features_list]
 
@@ -87,7 +90,7 @@ def run_model_DBLP(args):
     total_macro_list = []
     ratio_embs = []
     for ratio in train_val_test_idx.keys():
-        if(args.dataset == "PubMed"):
+        if args.dataset == "PubMed":
             train_idx = train_val_test_idx[ratio]["train_idx"]
             train_idx = np.sort(train_idx)
             val_idx = train_val_test_idx[ratio]["val_idx"]
@@ -123,7 +126,7 @@ def run_model_DBLP(args):
         nmi_list = []
         ari_list = []
         for i in range(args.repeat):
-            if(args.dataset != "PubMed"):
+            if args.dataset != "PubMed":
                 train_idx = train_val_test_idx[ratio][i]["train_idx"]
                 train_idx = np.sort(train_idx)
                 val_idx = train_val_test_idx[ratio][i]["val_idx"]
@@ -162,8 +165,13 @@ def run_model_DBLP(args):
                 t_start = time.time()
                 # training
                 net.train()
-                logits,embeds = net(features_list, e_feat)
+                logits, embeds = net(features_list, e_feat)
+                print(logits.shape)
+                exit()
+                if args.dataset == "PubMed":
+                    logits = logits[labels_indices]
                 logp = F.log_softmax(logits, 1)
+
                 train_loss = F.nll_loss(logp[train_idx], labels[train_idx])
 
                 # autograd
@@ -180,8 +188,11 @@ def run_model_DBLP(args):
                 # validation
                 net.eval()
                 with torch.no_grad():
-                    logits,embeds = net(features_list, e_feat)
+                    logits, embeds = net(features_list, e_feat)
+                    if args.dataset == "PubMed":
+                        logits = logits[labels_indices]
                     logp = F.log_softmax(logits, 1)
+
                     val_loss = F.nll_loss(logp[val_idx], labels[val_idx])
                 t_end = time.time()
                 # print validation info
@@ -197,15 +208,18 @@ def run_model_DBLP(args):
             net.eval()
             test_logits = []
             with torch.no_grad():
-                logits,embeds = net(features_list, e_feat)
+                logits, embeds = net(features_list, e_feat)
+                if args.dataset == "PubMed":
+                    logits = logits[labels_indices]
                 test_logits = logits[test_idx]
+
                 test_pred = test_logits.cpu().numpy().argmax(axis=1)
                 onehot = np.eye(num_classes, dtype=np.int32)
                 # dl.gen_file_for_evaluate(test_idx=test_idx, label=pred, file_name=f"{args.dataset}_{args.run}.txt")
                 # test_pred = onehot[pred]
 
                 # emb_2d=dl.visualization(logits[:target_node_size],labels,f"log/{args.dataset}/{formatted_now}_{ratio}.png",False)
-                if args.dataset != "PubMed" :
+                if args.dataset != "PubMed":
                     nmi, ari = dl.node_clustering_evaluate(embeds[:target_node_size], labels, num_classes, 10)
                     nmi_list.append(nmi)
                     ari_list.append(ari)
@@ -224,13 +238,19 @@ def run_model_DBLP(args):
             total_macro_list.append(np.mean(macro_list))
         else:
             with open(f"log/{args.dataset}/{formatted_now}", "a") as log_file:
-                if(args.task=="classification" or args.task == "all"):
+                if args.task == "classification" or args.task == "all":
                     log_file.write(
                         "\t Label Rate:{}% Accuracy:[{:.4f},{:.4f}] Micro-F1:[{:.4f},{:.4f}] Macro-F1:[{:.4f},{:.4f}] \n".format(
-                            ratio, np.mean(auc_list), np.std(auc_list), np.mean(micro_list), np.std(micro_list), np.mean(macro_list), np.std(macro_list)
+                            ratio,
+                            np.mean(auc_list),
+                            np.std(auc_list),
+                            np.mean(micro_list),
+                            np.std(micro_list),
+                            np.mean(macro_list),
+                            np.std(macro_list),
                         )
                     )
-                if(args.task=="clustering" or args.task == "all"):
+                if args.task == "clustering" or args.task == "all":
                     log_file.write(
                         "\t[clustering] nmi: [{:.4f}, {:.4f}] ari: [{:.4f}, {:.4f}]\n".format(
                             np.mean(nmi_list), np.std(nmi_list), np.mean(ari_list), np.std(ari_list)
@@ -240,7 +260,7 @@ def run_model_DBLP(args):
                 # print(dl.evaluate(pred))
     if args.visual:
         with torch.no_grad():
-            #logits,embeds = net(features_list, e_feat)
+            # logits,embeds = net(features_list, e_feat)
             emb_2d = dl.visualization(ratio_embs, labels, f"log/{args.dataset}/{formatted_now}.png", args.visual)
     if args.dataset == "PubMed" or args.dataset == "Freebase":
         with open(f"log/{args.dataset}/{formatted_now}", "a") as log_file:
@@ -291,9 +311,9 @@ if __name__ == "__main__":
     ap.add_argument("--dataset", type=str)
     ap.add_argument("--edge-feats", type=int, default=64)
     ap.add_argument("--run", type=int, default=1)
-    ap.add_argument("--gpu", type=int, default=1)
+    ap.add_argument("--gpu", type=int, default=0)
     ap.add_argument("--visual", type=bool)
-    ap.add_argument("--task",type=str,default="all")
+    ap.add_argument("--task", type=str, default="all")
     args = ap.parse_args()
     os.makedirs("checkpoint", exist_ok=True)
     run_model_DBLP(args)

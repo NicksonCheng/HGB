@@ -13,7 +13,7 @@ Ntypes = {
     "acm": {"p": "paper", "a": "author", "s": "subject"},
     "aminer": {"p": "paper", "a": "author", "r": "reference"},
     "freebase": {"m": "movie", "a": "author", "w": "writer", "d": "director"},
-    "PubMed": {"G": "Geng", "D": "Disease", "C": "Chemical", "S": "Species"},
+    "PubMed": {"D": "Disease", "G": "Geng", "C": "Chemical", "S": "Species"},
     "Freebase": {"B": "Book", "F": "Film", "M": "Music", "S": "Sports", "P": "People", "L": "Location", "O": "Organization", "U": "Business"},
 }
 num_node = {
@@ -28,7 +28,7 @@ Relations = {
     "PubMed": ["GG", "GD", "DD", "CG", "CD", "CC", "CS", "SG", "SD", "SS", "DG", "GC", "DC", "SC", "GS", "DS"],
     "Freebase": [],
 }
-lable_ratio=["3","4","60"]
+lable_ratio = ["3", "4", "60"]
 for n1 in Ntypes["Freebase"].keys():
     for n2 in Ntypes["Freebase"].keys():
         if f"{n1}{n2}" not in Relations["Freebase"]:
@@ -189,12 +189,12 @@ class hg_data_loader:
                 idx_val = np.array(idx_val)
                 idx_test = np.array(idx_test)
 
-                ## used fixed train/val/test 
+                ## used fixed train/val/test
                 # idx_train = np.load(os.path.join(self.path, f"train_{ratio}.npy"))
                 # idx_val = np.load(os.path.join(self.path, f"val_{ratio}.npy"))
                 # idx_test = np.load(os.path.join(self.path, f"test_{ratio}.npy"))
                 ##
-                
+
                 ratio_init_labels[ratio][idx_train] = labels[idx_train]
                 ratio_init_labels[ratio][idx_val] = labels[idx_val]
                 ratio_init_labels[ratio][idx_test] = labels[idx_test]
@@ -211,8 +211,9 @@ class hg_data_loader:
         ## 要 5個 train/test idx 去訓練
         from sklearn.model_selection import StratifiedKFold
 
-        n_splits = 10
+        n_splits = 5
         labels = torch.from_numpy(np.load(os.path.join(self.path, "labels.npy"))).long()
+        labels_indices = torch.from_numpy(np.load(os.path.join(self.path, "labels_indices.npy"))).long()
         self.num_classes = labels.max().item() + 1
         p_ntype_id = list(self.ntypes.keys()).index(self.predict_ntype)
         n = self.nodes["count"][p_ntype_id]
@@ -237,11 +238,10 @@ class hg_data_loader:
                 ratio_init_labels[i][test_idx] = labels[test_idx]
                 ratio_init_labels[i] = torch.LongTensor(ratio_init_labels[i])
                 # print(len(trainval_idx), len(train_idx), len(val_idx), len(test_idx))
-
                 ratio_nids[i] = {"train_idx": train_idx, "val_idx": val_idx, "test_idx": test_idx}
                 break
 
-        return labels, ratio_nids
+        return labels, labels_indices, ratio_nids
 
     def gen_file_for_evaluate(self, test_idx, label, file_name, mode="bi"):
         from sklearn.metrics import f1_score, roc_auc_score
@@ -275,7 +275,9 @@ class hg_data_loader:
         colors = ["red", "blue", "green", "yellow", "purple", "orange", "black", "pink", "brown", "gray"]
         if display:
             fig, axs = plt.subplots(1, len(ratio_embs), figsize=(36, 8))
-            fig.suptitle("t-SNE visualization of node embeddings with class labels")
+            # fig.suptitle("t-SNE visualization of node embeddings with class labels")
+            # Remove extra white space around the figure
+            plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
             for i, embs_2d in enumerate(ratio_embs_2d):
 
                 for label in np.unique(labels):
@@ -283,9 +285,10 @@ class hg_data_loader:
                     axs[i].scatter(embs_2d[indices, 0], embs_2d[indices, 1], color=colors[label], label=f"Class {label}", alpha=0.6)
 
                 axs[i].set_title(f"{label_rate[i]}Train label node per class")
-                axs[i].set_xlabel("x t-SNE vector")
-                axs[i].set_ylabel("y t-SNE vector")
-                axs[i].legend()
+                # axs[i].set_xlabel("x t-SNE vector")
+                # axs[i].set_ylabel("y t-SNE vector")
+                axs[i].axis("off")
+                axs[i].legend(fontsize=20)
 
             fig.savefig(save_file)
         ratio_embs_2d = [torch.tensor(embs_2d) for embs_2d in ratio_embs_2d]
@@ -341,6 +344,7 @@ def load_data(args):
     features = []
     for i in range(len(dl.nodes["count"])):
         th = dl.nodes["attr"][i]
+        # print(th.shape)
         if th is None:
             features.append(sp.eye(dl.nodes["count"][i]))
         else:
@@ -367,7 +371,8 @@ def load_data(args):
     # train_val_test_idx['val_idx'] = val_idx
     # train_val_test_idx['test_idx'] = test_idx
     if args.dataset == "PubMed" or args.dataset == "Freebase":
-        labels, train_val_test_idx = dl.load_labels()
+        labels, labels_indices, train_val_test_idx = dl.load_labels()
+        return features, adjM, labels, labels_indices, train_val_test_idx, dl
     else:
         labels, train_val_test_idx = dl.load_labels_with_ratio(args.repeat)
-    return features, adjM, labels, train_val_test_idx, dl
+        return features, adjM, labels, train_val_test_idx, dl
